@@ -102,6 +102,47 @@ async fn list_dags(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
     }
 }
 
+async fn get_dag_with_details(
+    Extension(pool): Extension<PgPool>,
+    axum::extract::Path(dag_id): axum::extract::Path<Uuid>,
+) -> impl IntoResponse {
+    let dag_query = sqlx::query_as::<_, DAG>("SELECT id, name FROM dags WHERE id = $1")
+        .bind(dag_id)
+        .fetch_optional(&pool)
+        .await;
+
+    let nodes_query = sqlx::query_as::<_, Node>("SELECT id, dag_id, label FROM nodes WHERE dag_id = $1")
+        .bind(dag_id)
+        .fetch_all(&pool)
+        .await;
+
+    let edges_query = sqlx::query_as::<_, Edge>("SELECT id, source, target, dag_id FROM edges WHERE dag_id = $1")
+        .bind(dag_id)
+        .fetch_all(&pool)
+        .await;
+
+    match (dag_query, nodes_query, edges_query) {
+        (Ok(Some(dag)), Ok(nodes), Ok(edges)) => {
+            let result = serde_json::json!({
+                "dag": dag,
+                "nodes": nodes,
+                "edges": edges,
+            });
+            Json(result).into_response()
+        }
+        (Ok(None), _, _) => (
+            StatusCode::NOT_FOUND,
+            format!("DAG with id {} not found", dag_id),
+        )
+            .into_response(),
+        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to fetch DAG details: {}", e),
+        )
+            .into_response(),
+    }
+}
+
 
 async fn create_node(
     Extension(pool): Extension<PgPool>,
@@ -196,6 +237,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/dags", post(create_dag).get(list_dags))
+        .route("/dags/:id", axum::routing::get(get_dag_with_details))
         .route("/nodes", post(create_node).get(list_nodes))
         .route("/edges", post(create_edge).get(list_edges))
         .layer(Extension(pool));

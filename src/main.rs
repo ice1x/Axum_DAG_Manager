@@ -1,250 +1,56 @@
-use sqlx::{PgPool, FromRow};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use std::env;
-use dotenvy::dotenv;
+mod db;
+mod error;
+mod graph;
+mod handlers;
+mod models;
+mod validation;
+
 use axum::{
-    extract::{Extension, Json},
-    response::IntoResponse,
-    routing::{post},
+    extract::Extension,
+    routing::{delete, get, post, put},
     Router,
-    http::StatusCode,
 };
+use dotenvy::dotenv;
 
-// Models
-#[derive(Serialize, Deserialize, FromRow)]
-struct DAG {
-    id: Uuid,
-    name: String,
-}
-
-#[derive(Deserialize)]
-struct CreateDAGPayload {
-    name: String,
-}
-
-#[derive(Serialize, Deserialize, FromRow)]
-struct Node {
-    id: Uuid,
-    dag_id: Uuid,
-    label: String,
-}
-
-#[derive(Deserialize)]
-struct CreateNodePayload {
-    // name: String,
-    dag_id: Uuid,
-    label: String,
-}
-
-
-#[derive(Serialize, Deserialize, FromRow)]
-struct Edge {
-    id: Uuid,
-    source: Uuid,
-    target: Uuid,
-    dag_id: Uuid,
-}
-
-#[derive(Serialize, Deserialize, FromRow)]
-struct CreateEdgePayload {
-    source: Uuid,
-    target: Uuid,
-    dag_id: Uuid,
-}
-
-// Database Setup
-async fn setup_database() -> PgPool {
-    dotenv().ok();
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to database")
-}
-
-//CRUD Handlers for DAG
-async fn create_dag(
-    Extension(pool): Extension<PgPool>,
-    Json(payload): Json<CreateDAGPayload>,
-) -> impl IntoResponse {
-    let id = Uuid::new_v4();
-    let dag = DAG {
-        id,
-        name: payload.name,
-    };
-
-    match sqlx::query!(
-        "INSERT INTO dags (id, name) VALUES ($1, $2)",
-        dag.id,
-        dag.name
-    )
-        .execute(&pool)
-        .await
-    {
-        Ok(_) => Json(dag).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create DAG: {}", e),
-        ).into_response(),
-    }
-}
-
-async fn list_dags(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
-    match sqlx::query_as::<_, DAG>("SELECT id, name FROM dags")
-        .fetch_all(&pool)
-        .await
-    {
-        Ok(dags) => Json(dags).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to fetch DAGs: {}", e),
-        ).into_response(),
-    }
-}
-
-async fn get_dag_with_details(
-    Extension(pool): Extension<PgPool>,
-    axum::extract::Path(dag_id): axum::extract::Path<Uuid>,
-) -> impl IntoResponse {
-    let dag_query = sqlx::query_as::<_, DAG>("SELECT id, name FROM dags WHERE id = $1")
-        .bind(dag_id)
-        .fetch_optional(&pool)
-        .await;
-
-    let nodes_query = sqlx::query_as::<_, Node>("SELECT id, dag_id, label FROM nodes WHERE dag_id = $1")
-        .bind(dag_id)
-        .fetch_all(&pool)
-        .await;
-
-    let edges_query = sqlx::query_as::<_, Edge>("SELECT id, source, target, dag_id FROM edges WHERE dag_id = $1")
-        .bind(dag_id)
-        .fetch_all(&pool)
-        .await;
-
-    match (dag_query, nodes_query, edges_query) {
-        (Ok(Some(dag)), Ok(nodes), Ok(edges)) => {
-            let result = serde_json::json!({
-                "dag": dag,
-                "nodes": nodes,
-                "edges": edges,
-            });
-            Json(result).into_response()
-        }
-        (Ok(None), _, _) => (
-            StatusCode::NOT_FOUND,
-            format!("DAG with id {} not found", dag_id),
-        )
-            .into_response(),
-        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to fetch DAG details: {}", e),
-        )
-            .into_response(),
-    }
-}
-
-
-async fn create_node(
-    Extension(pool): Extension<PgPool>,
-    Json(payload): Json<CreateNodePayload>,
-) -> impl IntoResponse {
-    let id = Uuid::new_v4();
-    let node = Node {
-        id,
-        dag_id: payload.dag_id,
-        label: payload.label,
-    };
-
-    match sqlx::query!(
-        "INSERT INTO nodes (id, dag_id, label) VALUES ($1, $2, $3)",
-        node.id,
-        node.dag_id,
-        node.label
-    )
-        .execute(&pool)
-        .await
-    {
-        Ok(_) => Json(node).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create Node: {}", e),
-        )
-            .into_response(),
-    }
-}
-
-async fn list_nodes(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
-    match sqlx::query_as::<_, Node>("SELECT id, dag_id, label FROM nodes")
-        .fetch_all(&pool)
-        .await
-    {
-        Ok(nodes) => Json(nodes).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to fetch Nodes: {}", e),
-        ).into_response(),
-    }
-}
-
-// CRUD Handlers for Edge
-async fn create_edge(
-    Extension(pool): Extension<PgPool>,
-    Json(payload): Json<CreateEdgePayload>,
-) -> impl IntoResponse {
-    let id = Uuid::new_v4();
-    let edge = Edge {
-        id,
-        source: payload.source,
-        target: payload.target,
-        dag_id: payload.dag_id,
-    };
-
-    match sqlx::query!(
-        "INSERT INTO edges (id, source, target, dag_id) VALUES ($1, $2, $3, $4)",
-        edge.id,
-        edge.source,
-        edge.target,
-        edge.dag_id
-    )
-        .execute(&pool)
-        .await
-    {
-        Ok(_) => Json(edge).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create Edge: {}", e),
-        ).into_response(),
-    }
-}
-
-async fn list_edges(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
-    match sqlx::query_as::<_, Edge>("SELECT id, source, target, dag_id FROM edges")
-        .fetch_all(&pool)
-        .await
-    {
-        Ok(edges) => Json(edges).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to fetch Edges: {}", e),
-        ).into_response(),
-    }
-}
-
-// Main Application
 #[tokio::main]
 async fn main() {
-    let pool = setup_database().await;
+    dotenv().ok();
+
+    let pool = db::setup_database().await;
 
     let app = Router::new()
-        .route("/dags", post(create_dag).get(list_dags))
-        .route("/dags/:id", axum::routing::get(get_dag_with_details))
-        .route("/nodes", post(create_node).get(list_nodes))
-        .route("/edges", post(create_edge).get(list_edges))
+        // DAG routes
+        .route("/dags", post(handlers::dag::create_dag))
+        .route("/dags", get(handlers::dag::list_dags))
+        .route("/dags/:id", get(handlers::dag::get_dag))
+        .route(
+            "/dags/:id/details",
+            get(handlers::dag::get_dag_with_details),
+        )
+        .route("/dags/:id", put(handlers::dag::update_dag))
+        .route("/dags/:id", delete(handlers::dag::delete_dag))
+        // Node routes
+        .route("/nodes", post(handlers::node::create_node))
+        .route("/nodes", get(handlers::node::list_nodes))
+        .route("/nodes/:id", get(handlers::node::get_node))
+        .route("/nodes/:id", put(handlers::node::update_node))
+        .route("/nodes/:id", delete(handlers::node::delete_node))
+        // Edge routes
+        .route("/edges", post(handlers::edge::create_edge))
+        .route("/edges", get(handlers::edge::list_edges))
+        .route("/edges/:id", get(handlers::edge::get_edge))
+        .route("/edges/:id", delete(handlers::edge::delete_edge))
         .layer(Extension(pool));
 
-    let addr = "127.0.0.1:3000".parse().unwrap();
-    println!("Server running at http://{}", addr);
-    axum::Server::bind(&addr)
+    let addr = "127.0.0.1:3000";
+    println!("🚀 Server running at http://{}", addr);
+    println!("📊 DAG Manager API v0.1.0");
+    println!("\nAvailable endpoints:");
+    println!("  DAGs:   POST/GET/PUT/DELETE /dags");
+    println!("  Nodes:  POST/GET/PUT/DELETE /nodes");
+    println!("  Edges:  POST/GET/DELETE /edges");
+
+    axum::Server::bind(&addr.parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

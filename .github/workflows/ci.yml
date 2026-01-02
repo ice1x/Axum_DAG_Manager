@@ -60,15 +60,27 @@ jobs:
     - name: Setup Database
       env:
         DATABASE_URL: postgres://postgres:password@localhost:5432/dag_service
+        PGPASSWORD: password
       run: |
         psql -h localhost -U postgres -d dag_service -f db_schema_migration.sql
-      env:
-        PGPASSWORD: password
 
     - name: Run tests
       env:
         DATABASE_URL: postgres://postgres:password@localhost:5432/dag_service
       run: cargo test --verbose
+
+    - name: Generate test coverage
+      if: github.event_name == 'pull_request'
+      run: |
+        cargo install cargo-tarpaulin
+        cargo tarpaulin --out Xml --output-dir ./coverage
+
+    - name: Upload coverage to Codecov
+      if: github.event_name == 'pull_request'
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/cobertura.xml
+        fail_ci_if_error: false
 
   lint:
     name: Lint
@@ -113,3 +125,13 @@ jobs:
       with:
         name: dag-service
         path: target/release/dag-service
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Run cargo audit
+      uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}

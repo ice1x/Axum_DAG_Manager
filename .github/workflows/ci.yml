@@ -128,4 +128,9 @@ jobs:
       run: cargo install cargo-audit
 
     - name: Run cargo audit
-      run: cargo audit
+      run: |
+        # Ignore RUSTSEC-2023-0071: rsa vulnerability in sqlx-mysql
+        # Rationale: We only use PostgreSQL. MySQL driver (sqlx-mysql) is compile-time
+        # dependency for sqlx macros, not used at runtime. The rsa crate vulnerability
+        # affects MySQL authentication which is not in our runtime dependency tree.
+        cargo audit --ignore RUSTSEC-2023-0071

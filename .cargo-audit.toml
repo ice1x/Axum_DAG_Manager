@@ -1,0 +1,10 @@
+# cargo-audit configuration
+
+[advisories]
+# Ignore RUSTSEC-2023-0071 (rsa 0.9.9 Marvin Attack)
+# Rationale: rsa is a transitive dependency through sqlx-mysql which we don't use
+# We only use PostgreSQL (sqlx-postgres), MySQL is compile-time only for macros
+# The vulnerability is in MySQL RSA authentication which is not in our runtime dependency tree
+ignore = [
+    "RUSTSEC-2023-0071"
+]

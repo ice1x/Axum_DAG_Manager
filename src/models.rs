@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 // DAG Models
 #[derive(Serialize, Deserialize, FromRow, Clone, Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct DAG {
     pub id: Uuid,
     pub name: String,
@@ -56,13 +57,9 @@ pub struct CreateEdgePayload {
 
 // Response Models
 #[derive(Serialize, Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct DAGDetails {
     pub dag: DAG,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
-}
-
-#[derive(Serialize, Debug)]
-pub struct ErrorResponse {
-    pub error: String,
 }

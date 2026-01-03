@@ -12,14 +12,14 @@ pub fn would_create_cycle(edges: &[Edge], new_source: Uuid, new_target: Uuid) ->
     for edge in edges {
         graph
             .entry(edge.source)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(edge.target);
     }
 
     // Add the proposed new edge
     graph
         .entry(new_source)
-        .or_insert_with(Vec::new)
+        .or_default()
         .push(new_target);
 
     // Check if there's a path from new_target back to new_source (which would be a cycle)
@@ -55,13 +55,15 @@ fn has_path(graph: &HashMap<Uuid, Vec<Uuid>>, start: Uuid, end: Uuid) -> bool {
 }
 
 /// Validates that edges form a proper DAG (no cycles)
+/// Note: Kept for potential future use as an alternative validation method
+#[allow(dead_code)]
 pub fn validate_dag(edges: &[Edge]) -> Result<()> {
     let mut graph: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
 
     for edge in edges {
         graph
             .entry(edge.source)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(edge.target);
     }
 
@@ -70,16 +72,17 @@ pub fn validate_dag(edges: &[Edge]) -> Result<()> {
     let mut rec_stack = HashSet::new();
 
     for &node in graph.keys() {
-        if !visited.contains(&node) {
-            if has_cycle(&graph, node, &mut visited, &mut rec_stack) {
-                return Err(AppError::CycleDetected);
-            }
+        if !visited.contains(&node)
+            && has_cycle(&graph, node, &mut visited, &mut rec_stack)
+        {
+            return Err(AppError::CycleDetected);
         }
     }
 
     Ok(())
 }
 
+#[allow(dead_code)]
 fn has_cycle(
     graph: &HashMap<Uuid, Vec<Uuid>>,
     node: Uuid,

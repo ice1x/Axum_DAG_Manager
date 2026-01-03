@@ -10,17 +10,11 @@ pub fn would_create_cycle(edges: &[Edge], new_source: Uuid, new_target: Uuid) ->
 
     // Add existing edges
     for edge in edges {
-        graph
-            .entry(edge.source)
-            .or_default()
-            .push(edge.target);
+        graph.entry(edge.source).or_default().push(edge.target);
     }
 
     // Add the proposed new edge
-    graph
-        .entry(new_source)
-        .or_default()
-        .push(new_target);
+    graph.entry(new_source).or_default().push(new_target);
 
     // Check if there's a path from new_target back to new_source (which would be a cycle)
     has_path(&graph, new_target, new_source)
@@ -61,10 +55,7 @@ pub fn validate_dag(edges: &[Edge]) -> Result<()> {
     let mut graph: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
 
     for edge in edges {
-        graph
-            .entry(edge.source)
-            .or_default()
-            .push(edge.target);
+        graph.entry(edge.source).or_default().push(edge.target);
     }
 
     // Detect cycles using DFS
@@ -72,9 +63,7 @@ pub fn validate_dag(edges: &[Edge]) -> Result<()> {
     let mut rec_stack = HashSet::new();
 
     for &node in graph.keys() {
-        if !visited.contains(&node)
-            && has_cycle(&graph, node, &mut visited, &mut rec_stack)
-        {
+        if !visited.contains(&node) && has_cycle(&graph, node, &mut visited, &mut rec_stack) {
             return Err(AppError::CycleDetected);
         }
     }

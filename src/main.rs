@@ -50,8 +50,6 @@ async fn main() {
     println!("  Nodes:  POST/GET/PUT/DELETE /nodes");
     println!("  Edges:  POST/GET/DELETE /edges");
 
-    axum::Server::bind(&addr.parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
